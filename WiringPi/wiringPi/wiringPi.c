@@ -680,9 +680,28 @@ int piBoardRev (void)
 
 // See if it's BCM2708 or BCM2709
 
-  if (strstr (line, "BCM2709") != NULL)
+  char buffer[8] ;
+  const char *ranges_file = "/proc/device-tree/soc/ranges" ;
+  int info_fd = open(ranges_file, O_RDONLY) ;
+
+  if (info_fd < 0) {
+    fprintf(stderr, "cannot open: %s", ranges_file) ;
+    exit (EXIT_FAILURE) ;
+  }
+
+  ssize_t n = read(info_fd, buffer, sizeof(buffer)) ;
+  close(info_fd) ;
+
+  if (n != 8) {
+    fprintf(stderr, "cannot read base address: %s", ranges_file) ;
+    exit (EXIT_FAILURE) ;
+  }
+
+  uint32_t gpio_base =  (buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + (buffer[7] << 0) ;
+
+  if (gpio_base == 0x3f000000)
     piModel2 = TRUE ;
-  else if (strstr (line, "BCM2708") == NULL)
+  else if (gpio_base != 0x20000000)
   {
     fprintf (stderr, "Unable to determine hardware version. I see: %s,\n", line) ;
     fprintf (stderr, " - expecting BCM2708 or BCM2709. Please report this to projects@drogon.net\n") ;
