@@ -131,12 +131,15 @@ struct wiringPiNodeStruct *wiringPiNodes = NULL ;
 //	Taken from Gert/Doms code. Some of this is not in the manual
 //	that I can find )-:
 
-static volatile unsigned int	 BCM2708_PERI_BASE = 0x20000000 ;	// Variable for Pi2
-#define GPIO_PADS		(BCM2708_PERI_BASE + 0x00100000)
-#define CLOCK_BASE		(BCM2708_PERI_BASE + 0x00101000)
-#define GPIO_BASE		(BCM2708_PERI_BASE + 0x00200000)
-#define GPIO_TIMER		(BCM2708_PERI_BASE + 0x0000B000)
-#define GPIO_PWM		(BCM2708_PERI_BASE + 0x0020C000)
+#define BCM2708_PERI_BASE	0x20000000
+#define BCM2709_PERI_BASE	0x3f000000
+#define BCM2711_PERI_BASE	0xfe000000
+static volatile unsigned int	 PERI_BASE = BCM2708_PERI_BASE ;	// Variable for Pi2
+#define GPIO_PADS		(PERI_BASE + 0x00100000)
+#define CLOCK_BASE		(PERI_BASE + 0x00101000)
+#define GPIO_BASE		(PERI_BASE + 0x00200000)
+#define GPIO_TIMER		(PERI_BASE + 0x0000B000)
+#define GPIO_PWM		(PERI_BASE + 0x0020C000)
 
 #define	PAGE_SIZE		(4*1024)
 #define	BLOCK_SIZE		(4*1024)
@@ -204,6 +207,7 @@ static volatile uint32_t *timerIrqRaw ;
 //	Only intended for the gpio command - use at your own risk!
 
 static int piModel2 = FALSE ;
+static int piModel4 = FALSE ;
 
 const char *piModelNames [7] =
 {
@@ -680,7 +684,7 @@ int piBoardRev (void)
 
 // See if it's BCM2708 or BCM2709
 
-  char buffer[8] ;
+  char buffer[12] ;
   const char *ranges_file = "/proc/device-tree/soc/ranges" ;
   int info_fd = open(ranges_file, O_RDONLY) ;
 
@@ -692,16 +696,23 @@ int piBoardRev (void)
   ssize_t n = read(info_fd, buffer, sizeof(buffer)) ;
   close(info_fd) ;
 
-  if (n != 8) {
+  if (n < 8) {
     fprintf(stderr, "cannot read base address: %s", ranges_file) ;
     exit (EXIT_FAILURE) ;
   }
 
   uint32_t gpio_base =  (buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + (buffer[7] << 0) ;
 
-  if (gpio_base == 0x3f000000)
+  if (!gpio_base)
+  {
+    gpio_base = (buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + (buffer[11] << 0) ;
+  }
+
+  if (gpio_base == BCM2709_PERI_BASE)
     piModel2 = TRUE ;
-  else if (gpio_base != 0x20000000)
+  else if (gpio_base == BCM2711_PERI_BASE)
+    piModel4 = TRUE ;
+  else if (gpio_base != BCM2708_PERI_BASE)
   {
     fprintf (stderr, "Unable to determine hardware version. I see: %s,\n", line) ;
     fprintf (stderr, " - expecting BCM2708 or BCM2709. Please report this to projects@drogon.net\n") ;
@@ -1013,6 +1024,11 @@ void pwmSetRange (unsigned int range)
 void pwmSetClock (int divisor)
 {
   uint32_t pwm_control ;
+
+  if(piModel4)
+  {
+    divisor = 540*divisor/192;
+  }
   divisor &= 4095 ;
 
   if ((wiringPiMode == WPI_MODE_PINS) || (wiringPiMode == WPI_MODE_PHYS) || (wiringPiMode == WPI_MODE_GPIO))
@@ -1864,7 +1880,9 @@ int wiringPiSetup (void)
   else 				// A, B, Rev 2, B+, CM, Pi2
   {
     if (piModel2)
-      BCM2708_PERI_BASE = 0x3F000000 ;
+      PERI_BASE = BCM2709_PERI_BASE ;
+    if (piModel4)
+      PERI_BASE = BCM2711_PERI_BASE ;
      pinToGpio =  pinToGpioR2 ;
     physToGpio = physToGpioR2 ;
   }
