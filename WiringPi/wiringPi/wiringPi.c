@@ -481,6 +481,10 @@ static uint8_t gpioToFEN [] =
 //	GPIO Pin pull up/down register
 
 #define	GPPUD	37
+#define PULLUPDN_OFFSET_2711_0      57
+#define PULLUPDN_OFFSET_2711_1      58
+#define PULLUPDN_OFFSET_2711_2      59
+#define PULLUPDN_OFFSET_2711_3      60
 
 // gpioToPUDCLK
 //	(Word) offset to the Pull Up Down Clock regsiter
@@ -1317,11 +1321,33 @@ void pullUpDnControl (int pin, int pud)
     else if (wiringPiMode != WPI_MODE_GPIO)
       return ;
 
-    *(gpio + GPPUD)              = pud & 3 ;		delayMicroseconds (5) ;
-    *(gpio + gpioToPUDCLK [pin]) = 1 << (pin & 31) ;	delayMicroseconds (5) ;
+    // Check GPIO register
+    int is2711 = *(gpio + PULLUPDN_OFFSET_2711_3) != 0x6770696f;
+    if (is2711) {
+      // Pi 4 Pull-up/down method
+      int pullreg = PULLUPDN_OFFSET_2711_0 + (pin >> 4);
+      int pullshift = (pin & 0xf) << 1;
+      unsigned int pullbits;
+      unsigned int pull = 0;
+      if (pud == PUD_DOWN){
+        pull = 2;
+      } else
+      if (pud == PUD_UP){
+        pull = 1;
+      }
+      pullbits = *(gpio + pullreg);
+      pullbits &= ~(3 << pullshift);
+      pullbits |= (pull << pullshift);
+      *(gpio + pullreg) = pullbits;
+    }
+    else
+    {
+      *(gpio + GPPUD)              = pud & 3 ;		delayMicroseconds (5) ;
+      *(gpio + gpioToPUDCLK [pin]) = 1 << (pin & 31) ;	delayMicroseconds (5) ;
     
-    *(gpio + GPPUD)              = 0 ;			delayMicroseconds (5) ;
-    *(gpio + gpioToPUDCLK [pin]) = 0 ;			delayMicroseconds (5) ;
+      *(gpio + GPPUD)              = 0 ;			delayMicroseconds (5) ;
+      *(gpio + gpioToPUDCLK [pin]) = 0 ;			delayMicroseconds (5) ;
+    }
   }
   else						// Extension module
   {
